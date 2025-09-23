@@ -7,12 +7,75 @@ use arrow_odbc::OdbcReaderBuilder;
 use odbc_api::{ConnectionOptions, Environment};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use pyo3::types::PyCapsule;
+use pyo3::types::{PyBytes, PyCapsule};
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 
 use pyo3::create_exception;
 use pyo3::exceptions::PyException;
+
+// Helper function to handle long DSN names by converting to direct connection string
+fn build_connection_string(dsn: &str, user: &str, password: &str, config: &QueryConfig) -> String {
+    // Check if dsn is already a full connection string
+    let mut conn_str = if dsn.contains("DRIVER=") || dsn.contains("SERVER=") {
+        // It's already a connection string, use it directly
+        format!("{};UID={};PWD={};", dsn, user, password)
+    } else {
+        // Check if DSN contains a file path (common cause of long DSN names)
+        let is_file_path = dsn.contains("\\")
+            || dsn.contains("/")
+            || dsn.contains(":")
+            || dsn.ends_with(".fdb")
+            || dsn.ends_with(".gdb");
+
+        if is_file_path || dsn.len() > 32 {
+            // Convert file path or long DSN to direct connection string
+            // Use DATABASE parameter for file paths, which is more elegant
+            if is_file_path {
+                format!(
+                    "DRIVER={{InterBase ODBC Driver}};DATABASE={};UID={};PWD={};",
+                    dsn, user, password
+                )
+            } else {
+                format!(
+                    "DRIVER={{InterBase ODBC Driver}};DSN={};UID={};PWD={};",
+                    dsn, user, password
+                )
+            }
+        } else {
+            // It's a DSN, use DSN format
+            format!("DSN={};UID={};PWD={};", dsn, user, password)
+        }
+    };
+
+    if config.read_only {
+        conn_str.push_str("ReadOnly=1;");
+    }
+
+    if let Some(timeout) = config.connection_timeout {
+        conn_str.push_str(&format!("Connection Timeout={};", timeout));
+    }
+
+    if let Some(timeout) = config.query_timeout {
+        conn_str.push_str(&format!("Query Timeout={};", timeout));
+    }
+
+    if let Some(level) = &config.isolation_level {
+        match level.to_lowercase().as_str() {
+            "read_uncommitted" => conn_str.push_str("Isolation Level=ReadUncommitted;"),
+            "read_committed" => conn_str.push_str("Isolation Level=ReadCommitted;"),
+            "repeatable_read" => conn_str.push_str("Isolation Level=RepeatableRead;"),
+            "serializable" => conn_str.push_str("Isolation Level=Serializable;"),
+            "snapshot" => conn_str.push_str("Isolation Level=Snapshot;"),
+            _ => {
+                // If unknown level, pass through as-is (driver-specific)
+                conn_str.push_str(&format!("Isolation Level={};", level));
+            }
+        }
+    }
+
+    conn_str
+}
 
 create_exception!(ibarrow, PyConnectionError, PyException);
 create_exception!(ibarrow, PySQLError, PyException);
@@ -42,9 +105,9 @@ impl IbarrowConnection {
         }
     }
 
-    fn query_arrow_ipc(&self, sql: &str) -> PyResult<Vec<u8>> {
-        query_arrow_ipc_impl(&self.dsn, &self.user, &self.password, sql, &self.config).map_err(
-            |e| {
+    fn query_arrow_ipc(&self, sql: &str) -> PyResult<Py<PyAny>> {
+        let bytes = query_arrow_ipc_impl(&self.dsn, &self.user, &self.password, sql, &self.config)
+            .map_err(|e| {
                 let msg = e.to_string();
                 if msg.contains("IM002") || msg.contains("connection") {
                     PyConnectionError::new_err(format!("Connection Error: {}", msg))
@@ -55,8 +118,13 @@ impl IbarrowConnection {
                 } else {
                     PyRuntimeError::new_err(msg)
                 }
-            },
-        )
+            })?;
+
+        // Convert Vec<u8> to Python bytes object
+        Python::with_gil(|py| {
+            let py_bytes = PyBytes::new_bound(py, &bytes);
+            Ok(py_bytes.into())
+        })
     }
 
     fn query_polars(&self, sql: &str) -> PyResult<Py<PyAny>> {
@@ -76,6 +144,27 @@ impl IbarrowConnection {
             &self.config,
             return_dataframe,
         )
+    }
+
+    fn test_connection(&self) -> PyResult<bool> {
+        // Test connection with a simple query
+        // Returns True if connection is successful, False otherwise
+        match query_arrow_ipc_impl(
+            &self.dsn,
+            &self.user,
+            &self.password,
+            "SELECT 1",
+            &self.config,
+        ) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    fn close(&self) -> PyResult<()> {
+        // ibarrow uses stateless connections, so close() is a no-op
+        // This method exists for compatibility with database connection patterns
+        Ok(())
     }
 
     fn __repr__(&self) -> String {
@@ -139,46 +228,19 @@ fn query_arrow_ipc_impl(
 ) -> Result<Vec<u8>> {
     let env = Environment::new()?;
 
-    // Check if dsn is already a full connection string
-    let mut conn_str = if dsn.contains("DRIVER=") || dsn.contains("SERVER=") {
-        // It's already a connection string, use it directly
-        format!("{};UID={};PWD={};", dsn, user, password)
-    } else {
-        // It's a DSN, use DSN format
-        format!("DSN={};UID={};PWD={};", dsn, user, password)
-    };
-
-    if config.read_only {
-        conn_str.push_str("ReadOnly=1;");
-    }
-
-    if let Some(timeout) = config.connection_timeout {
-        conn_str.push_str(&format!("Connection Timeout={};", timeout));
-    }
-
-    if let Some(timeout) = config.query_timeout {
-        conn_str.push_str(&format!("Query Timeout={};", timeout));
-    }
-
-    if let Some(level) = &config.isolation_level {
-        match level.to_lowercase().as_str() {
-            "read_uncommitted" => conn_str.push_str("Isolation Level=ReadUncommitted;"),
-            "read_committed" => conn_str.push_str("Isolation Level=ReadCommitted;"),
-            "repeatable_read" => conn_str.push_str("Isolation Level=RepeatableRead;"),
-            "serializable" => conn_str.push_str("Isolation Level=Serializable;"),
-            "snapshot" => conn_str.push_str("Isolation Level=Snapshot;"),
-            _ => {
-                // If unknown level, pass through as-is (driver-specific)
-                conn_str.push_str(&format!("Isolation Level={};", level));
-            }
-        }
-    }
+    // Build connection string with long DSN name handling
+    let conn_str = build_connection_string(dsn, user, password, config);
 
     let conn = env.connect_with_connection_string(&conn_str, ConnectionOptions::default())?;
 
-    let cursor = conn
-        .execute(sql, (), None)?
-        .ok_or_else(|| anyhow!("SQL did not return a result set"))?;
+    let cursor = match conn.execute(sql, (), None)? {
+        Some(cursor) => cursor,
+        None => {
+            // Query executed successfully but returned no result set
+            // This can happen with some Firebird/InterBase queries
+            return Err(anyhow!("Query executed but returned no result set. This may indicate a connection issue or the query returned no data."));
+        }
+    };
 
     let text_size = config.max_text_size.unwrap_or(65536);
     let binary_size = config.max_binary_size.unwrap_or(65536);
@@ -236,7 +298,8 @@ fn query_polars_impl(
         let io = py.import_bound("io")?;
 
         // Create BytesIO object for polars.read_ipc
-        let buf = io.getattr("BytesIO")?.call1((bytes,))?;
+        let py_bytes = PyBytes::new_bound(py, &bytes);
+        let buf = io.getattr("BytesIO")?.call1((py_bytes,))?;
 
         // Use polars.read_ipc with proper error handling
         let df = polars.getattr("read_ipc")?.call1((buf,))?;
@@ -269,7 +332,8 @@ fn query_pandas_impl(
         let pyarrow = py.import_bound("pyarrow")?;
         let io = py.import_bound("io")?;
 
-        let buf = io.getattr("BytesIO")?.call1((bytes,))?;
+        let py_bytes = PyBytes::new_bound(py, &bytes);
+        let buf = io.getattr("BytesIO")?.call1((py_bytes,))?;
         let table = pyarrow
             .getattr("ipc")?
             .getattr("open_stream")?
@@ -291,45 +355,19 @@ fn query_arrow_c_data_impl(
 ) -> Result<(Py<PyAny>, Py<PyAny>)> {
     let env = Environment::new()?;
 
-    // Check if dsn is already a full connection string
-    let mut conn_str = if dsn.contains("DRIVER=") || dsn.contains("SERVER=") {
-        // It's already a connection string, use it directly
-        format!("{};UID={};PWD={};", dsn, user, password)
-    } else {
-        // It's a DSN, use DSN format
-        format!("DSN={};UID={};PWD={};", dsn, user, password)
-    };
-
-    if config.read_only {
-        conn_str.push_str("ReadOnly=1;");
-    }
-
-    if let Some(timeout) = config.connection_timeout {
-        conn_str.push_str(&format!("Connection Timeout={};", timeout));
-    }
-
-    if let Some(timeout) = config.query_timeout {
-        conn_str.push_str(&format!("Query Timeout={};", timeout));
-    }
-
-    if let Some(level) = &config.isolation_level {
-        match level.to_lowercase().as_str() {
-            "read_uncommitted" => conn_str.push_str("Isolation Level=ReadUncommitted;"),
-            "read_committed" => conn_str.push_str("Isolation Level=ReadCommitted;"),
-            "repeatable_read" => conn_str.push_str("Isolation Level=RepeatableRead;"),
-            "serializable" => conn_str.push_str("Isolation Level=Serializable;"),
-            "snapshot" => conn_str.push_str("Isolation Level=Snapshot;"),
-            _ => {
-                conn_str.push_str(&format!("Isolation Level={};", level));
-            }
-        }
-    }
+    // Build connection string with long DSN name handling
+    let conn_str = build_connection_string(dsn, user, password, config);
 
     let conn = env.connect_with_connection_string(&conn_str, ConnectionOptions::default())?;
 
-    let cursor = conn
-        .execute(sql, (), None)?
-        .ok_or_else(|| anyhow!("SQL did not return a result set"))?;
+    let cursor = match conn.execute(sql, (), None)? {
+        Some(cursor) => cursor,
+        None => {
+            // Query executed successfully but returned no result set
+            // This can happen with some Firebird/InterBase queries
+            return Err(anyhow!("Query executed but returned no result set. This may indicate a connection issue or the query returned no data."));
+        }
+    };
 
     let text_size = config.max_text_size.unwrap_or(65536);
     let binary_size = config.max_binary_size.unwrap_or(65536);

@@ -35,30 +35,36 @@ def basic_polars_example():
     # Create connection
     conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD)
 
-    # Simple query with Polars DataFrame
-    df = conn.query_polars(TEST_SQL)
+    try:
+        # Simple query with Polars DataFrame
+        df = conn.query_polars(TEST_SQL)
 
-    print(f"Retrieved {len(df)} rows")
-    print(df.head())
+        print(f"Retrieved {len(df)} rows")
+        print(df.head())
 
-    return df
+        return df
+    finally:
+        # Always close the connection when done
+        conn.close()
 
 
 def basic_pandas_example():
     """Basic example using Pandas DataFrame."""
 
-    # Simple query with Pandas DataFrame
-    df = ibarrow.query_pandas(
-        dsn="your_dsn",
-        user="username",
-        password="password",
-        sql="SELECT * FROM your_table LIMIT 1000",
-    )
+    # Create connection
+    conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD)
 
-    print(f"Retrieved {len(df)} rows")
-    print(df.head())
+    try:
+        # Simple query with Pandas DataFrame
+        df = conn.query_pandas(TEST_SQL)
 
-    return df
+        print(f"Retrieved {len(df)} rows")
+        print(df.head())
+
+        return df
+    finally:
+        # Always close the connection when done
+        conn.close()
 
 
 def advanced_configuration_example():
@@ -75,69 +81,77 @@ def advanced_configuration_example():
         isolation_level="READ_COMMITTED",  # Transaction isolation
     )
 
-    # Query with custom configuration
-    df = ibarrow.query_polars(
-        dsn="your_dsn",
-        user="username",
-        password="password",
-        sql="SELECT * FROM large_table",
-        config=config,
-    )
+    # Create connection with custom configuration
+    conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD, config=config)
 
-    return df
+    try:
+        # Query with custom configuration
+        df = conn.query_polars("SELECT * FROM large_table")
+
+        return df
+    finally:
+        # Always close the connection when done
+        conn.close()
 
 
 def raw_arrow_data_example():
     """Example using raw Arrow data for maximum control."""
 
-    # Get raw Arrow IPC bytes
-    arrow_bytes = ibarrow.query_arrow_ipc(
-        dsn="your_dsn",
-        user="username",
-        password="password",
-        sql="SELECT * FROM your_table",
-    )
+    # Create connection
+    conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD)
 
-    # Convert to Polars manually
-    df = pl.read_ipc(arrow_bytes)
+    try:
+        # Get raw Arrow IPC bytes (now returns proper Python bytes)
+        arrow_bytes = conn.query_arrow_ipc("SELECT * FROM your_table")
 
-    return df
+        # Convert to Polars manually (now works directly)
+        df = pl.read_ipc(arrow_bytes)
+
+        return df
+    finally:
+        # Always close the connection when done
+        conn.close()
 
 
 def arrow_c_data_example():
     """Example using Arrow C Data Interface for zero-copy."""
 
-    # Get raw Arrow C Data Interface capsules
-    schema_capsule, array_capsule = ibarrow.query_arrow_c_data(
-        dsn="your_dsn",
-        user="username",
-        password="password",
-        sql="SELECT * FROM your_table",
-    )
+    # Create connection
+    conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD)
 
-    # Convert to PyArrow Table using zero-copy
-    import pyarrow as pa
+    try:
+        # Get raw Arrow C Data Interface capsules
+        schema_capsule, array_capsule = conn.query_arrow_c_data(
+            "SELECT * FROM your_table"
+        )
 
-    schema = pa.Schema._import_from_c(schema_capsule)
-    array = pa.Array._import_from_c(array_capsule)
-    table = pa.Table.from_arrays([array], schema=schema)
+        # Convert to PyArrow Table using zero-copy
+        import pyarrow as pa
 
-    # Convert to Polars
-    df = pl.from_arrow(table)
+        schema = pa.Schema._import_from_c(schema_capsule)
+        array = pa.Array._import_from_c(array_capsule)
+        table = pa.Table.from_arrays([array], schema=schema)
 
-    return df
+        # Convert to Polars
+        df = pl.from_arrow(table)
+
+        return df
+    finally:
+        # Always close the connection when done
+        conn.close()
 
 
 def error_handling_example():
     """Example of proper error handling."""
 
+    conn = None
     try:
-        df = ibarrow.query_polars(
-            dsn="invalid_dsn",
-            user="username",
-            password="password",
-            sql="SELECT * FROM your_table",
-        )
+        # Create connection
+        conn = ibarrow.connect(dsn="invalid_dsn", user="username", password="password")
+
+        # Try to query
+        df = conn.query_polars("SELECT * FROM your_table")
+
     except ibarrow.PyConnectionError as e:
         print(f"Connection failed: {e}")
     except ibarrow.PySQLError as e:
@@ -146,6 +160,101 @@ def error_handling_example():
         print(f"Arrow processing error: {e}")
     except Exception as e:
         print(f"Unexpected error: {e}")
+    finally:
+        # Always close the connection if it was created
+        if conn is not None:
+            conn.close()
+
+
+def long_dsn_name_example():
+    """Example showing how ibarrow handles long DSN names and file paths automatically."""
+
+    # Common scenarios that cause "Nome de fonte de dados muito longo" error:
+
+    # 1. File paths (most common case)
+    file_path_dsn = (
+        r"C:\Program Files\Firebird\databases\my_very_long_database_name.fdb"
+    )
+
+    # 2. Long DSN names
+    long_dsn = "very_long_database_source_name_that_exceeds_odbc_limit"
+
+    # Both will be automatically converted to direct connection strings
+    # File paths use DATABASE parameter, long DSNs use DSN parameter
+
+    for dsn_name, description in [
+        (file_path_dsn, "file path"),
+        (long_dsn, "long DSN name"),
+    ]:
+        print(f"\n🔗 Testing {description}: {dsn_name}")
+
+        conn = ibarrow.connect(dsn=dsn_name, user=DB_USER, password=DB_PASSWORD)
+
+        try:
+            # This will work automatically - no manual conversion needed
+            df = conn.query_polars("SELECT * FROM your_table LIMIT 10")
+            print(f"✅ Successfully connected with {description}")
+            print(f"Retrieved {len(df)} rows")
+        except Exception as e:
+            print(f"❌ Connection failed: {e}")
+        finally:
+            conn.close()
+
+
+def test_connection_example():
+    """Test connection using the built-in test_connection() method."""
+
+    conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD)
+
+    try:
+        # Test connection with built-in method
+        is_connected = conn.test_connection()
+
+        if is_connected:
+            print("✅ Connection test successful!")
+            print("Database is accessible and credentials are valid.")
+
+            # Now you can safely run queries
+            df = conn.query_polars("SELECT 1 as test_value")
+            print(f"Query result: {df}")
+            return df
+        else:
+            print("❌ Connection test failed!")
+            print("This may indicate:")
+            print("- Database connection issue")
+            print("- Database file not found")
+            print("- Invalid credentials")
+            print("- Database server not running")
+            return None
+
+    except Exception as e:
+        print(f"❌ Connection test error: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def test_rdb_database_query():
+    """Test querying RDB$DATABASE to verify connection."""
+
+    conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD)
+
+    try:
+        # This query should work if connection is successful
+        df = conn.query_polars("SELECT 1 FROM RDB$DATABASE")
+        print(f"✅ RDB$DATABASE query successful: {len(df)} rows")
+        print(df.head())
+        return df
+    except Exception as e:
+        print(f"❌ RDB$DATABASE query failed: {e}")
+        print("This may indicate:")
+        print("- Database connection issue")
+        print("- Database file not found")
+        print("- Invalid credentials")
+        print("- Database server not running")
+        return None
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
@@ -157,5 +266,8 @@ if __name__ == "__main__":
     # raw_arrow_data_example()
     # arrow_c_data_example()
     # error_handling_example()
+    # long_dsn_name_example()
+    # test_connection_example()
+    # test_rdb_database_query()
 
     print("Examples ready to run!")

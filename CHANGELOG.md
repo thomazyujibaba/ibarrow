@@ -1,10 +1,22 @@
 # Changelog
 
+## [0.1.5]
+
+### Fixed
+- Fixed critical "a bytes-like object is required, not 'list'" error in query_arrow_ipc method by properly converting Vec<u8> to Python bytes
+
 ## [0.1.4]
 
 ### Fixed
 - Fixed code formatting issues in Rust source code
 - Removed trailing whitespace in lib.rs
+- Fixed "a bytes-like object is required, not 'list'" error in query_polars and query_pandas functions
+- Properly convert Vec<u8> to PyBytes for BytesIO compatibility
+- Added close() method to IbarrowConnection for compatibility with database connection patterns
+- Fixed "Nome de fonte de dados muito longo" error by automatically detecting file paths and long DSN names, converting them to elegant direct connection strings using DATABASE parameter for file paths
+- Improved error handling for queries that return no result set (like SELECT 1 FROM RDB$DATABASE) with more descriptive error messages
+- Added test_connection() method to IbarrowConnection for easy connection testing without complex queries
+
 
 ## [0.1.3.2]
 
@@ -22,7 +34,7 @@
 - Fixed query_polars to use Arrow IPC and update documentation
 - Fixed wheel installation in CI to match Python version
 
-## [0.1.1] - 2024-12-19
+## [0.1.1]
 
 ### Added
 - Support for direct connection strings in ibarrow
