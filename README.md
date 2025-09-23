@@ -109,14 +109,16 @@ import ibarrow
 # Create config with custom batch size
 config = ibarrow.QueryConfig(batch_size=2000)
 
-# Query with custom batch size
-arrow_bytes = ibarrow.query_arrow_ipc(
+# Create connection with configuration
+conn = ibarrow.connect(
     dsn="your_dsn",
     user="username",
     password="password",
-    sql="SELECT * FROM your_table",
     config=config
 )
+
+# Query with custom batch size
+arrow_bytes = conn.query_arrow_ipc("SELECT * FROM your_table")
 ```
 
 ### Advanced Configuration
@@ -244,7 +246,7 @@ Creates a connection object for database operations.
 
 **Returns:** `IbarrowConnection` object
 
-### `conn.query_arrow_ipc(sql)`
+### `query_arrow_ipc(sql)`
 
 Execute a SQL query and return Arrow IPC bytes.
 
@@ -268,7 +270,7 @@ Execute a SQL query and return a Polars DataFrame directly.
 
 **Note:** Uses `pl.read_ipc()` directly with bytes for optimal performance.
 
-### `query_pandas(dsn, user, password, sql, config=None)`
+### `query_pandas(sql)`
 
 Execute a SQL query and return a Pandas DataFrame directly.
 
