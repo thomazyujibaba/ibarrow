@@ -119,3 +119,6 @@ logs/
 
 # Repository setup files (not for public release)
 REPOSITORY_SETUP.md
+
+# Local test files (contains sensitive data)
+local_tests/
