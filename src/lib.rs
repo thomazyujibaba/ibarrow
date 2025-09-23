@@ -139,7 +139,14 @@ fn query_arrow_ipc_impl(
 ) -> Result<Vec<u8>> {
     let env = Environment::new()?;
 
-    let mut conn_str = format!("DSN={};UID={};PWD={};", dsn, user, password);
+    // Check if dsn is already a full connection string
+    let mut conn_str = if dsn.contains("DRIVER=") || dsn.contains("SERVER=") {
+        // It's already a connection string, use it directly
+        format!("{};UID={};PWD={};", dsn, user, password)
+    } else {
+        // It's a DSN, use DSN format
+        format!("DSN={};UID={};PWD={};", dsn, user, password)
+    };
 
     if config.read_only {
         conn_str.push_str("ReadOnly=1;");
@@ -291,7 +298,14 @@ fn query_arrow_c_data_impl(
 ) -> Result<(Py<PyAny>, Py<PyAny>)> {
     let env = Environment::new()?;
 
-    let mut conn_str = format!("DSN={};UID={};PWD={};", dsn, user, password);
+    // Check if dsn is already a full connection string
+    let mut conn_str = if dsn.contains("DRIVER=") || dsn.contains("SERVER=") {
+        // It's already a connection string, use it directly
+        format!("{};UID={};PWD={};", dsn, user, password)
+    } else {
+        // It's a DSN, use DSN format
+        format!("DSN={};UID={};PWD={};", dsn, user, password)
+    };
 
     if config.read_only {
         conn_str.push_str("ReadOnly=1;");
