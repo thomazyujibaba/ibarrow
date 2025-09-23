@@ -211,7 +211,18 @@ fn query_polars_impl(
 ) -> PyResult<Py<PyAny>> {
     // High-level wrapper: use zero-copy Arrow C Data Interface for maximum performance
     let (schema_capsule, array_capsule) = query_arrow_c_data_impl(dsn, user, password, sql, config)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("IM002") || msg.contains("connection") {
+                PyConnectionError::new_err(format!("Connection Error: {}", msg))
+            } else if msg.contains("SQL") || msg.contains("syntax") {
+                PySQLError::new_err(format!("SQL Error: {}", msg))
+            } else if msg.contains("Arrow") || msg.contains("c_data") {
+                PyArrowError::new_err(format!("Arrow Error: {}", msg))
+            } else {
+                PyRuntimeError::new_err(msg)
+            }
+        })?;
 
     // Return Polars DataFrame directly from C Data Interface
     Python::with_gil(|py| {
@@ -242,8 +253,18 @@ fn query_pandas_impl(
     config: &QueryConfig,
 ) -> PyResult<Py<PyAny>> {
     // High-level wrapper: use Arrow IPC for maximum compatibility with Pandas
-    let bytes = query_arrow_ipc_impl(dsn, user, password, sql, config)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let bytes = query_arrow_ipc_impl(dsn, user, password, sql, config).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("IM002") || msg.contains("connection") {
+            PyConnectionError::new_err(format!("Connection Error: {}", msg))
+        } else if msg.contains("SQL") || msg.contains("syntax") {
+            PySQLError::new_err(format!("SQL Error: {}", msg))
+        } else if msg.contains("Arrow") || msg.contains("c_data") {
+            PyArrowError::new_err(format!("Arrow Error: {}", msg))
+        } else {
+            PyRuntimeError::new_err(msg)
+        }
+    })?;
     Python::with_gil(|py| {
         let pyarrow = py.import_bound("pyarrow")?;
         let io = py.import_bound("io")?;
