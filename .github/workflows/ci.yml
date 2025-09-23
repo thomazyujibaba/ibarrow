@@ -61,9 +61,20 @@ jobs:
 
     - name: Install built package
       run: |
-        # Find and install the wheel file
-        wheel_file=$(find target/wheels -name "*.whl" | head -1)
-        pip install "$wheel_file"
+        # Install the wheel file (cross-platform approach)
+        # Use Python to find and install the wheel file
+        python -c "
+        import glob
+        import subprocess
+        import sys
+        
+        wheel_files = glob.glob('target/wheels/*.whl')
+        if wheel_files:
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', wheel_files[0]])
+        else:
+            print('No wheel files found in target/wheels/')
+            sys.exit(1)
+        "
 
     - name: Install test dependencies
       run: pip install pytest pytest-cov
