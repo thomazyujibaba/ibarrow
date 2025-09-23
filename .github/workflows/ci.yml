@@ -104,7 +104,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v4
@@ -138,8 +138,8 @@ jobs:
       if: runner.os == 'Linux'
       run: pip install maturin[patchelf]
 
-    - name: Install maturin (Windows/macOS)
-      if: runner.os != 'Linux'
+    - name: Install maturin (Windows)
+      if: runner.os == 'Windows'
       run: pip install maturin
 
     - name: Build wheels
@@ -173,8 +173,8 @@ jobs:
       if: runner.os == 'Linux'
       run: pip install maturin[patchelf]
 
-    - name: Install maturin (Windows/macOS)
-      if: runner.os != 'Linux'
+    - name: Install maturin (Windows)
+      if: runner.os == 'Windows'
       run: pip install maturin
 
     - name: Publish to PyPI

@@ -44,7 +44,18 @@ impl IbarrowConnection {
 
     fn query_arrow_ipc(&self, sql: &str) -> PyResult<Vec<u8>> {
         query_arrow_ipc_impl(&self.dsn, &self.user, &self.password, sql, &self.config)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("IM002") || msg.contains("connection") {
+                    PyConnectionError::new_err(format!("Connection Error: {}", msg))
+                } else if msg.contains("SQL") || msg.contains("syntax") {
+                    PySQLError::new_err(format!("SQL Error: {}", msg))
+                } else if msg.contains("Arrow") || msg.contains("c_data") {
+                    PyArrowError::new_err(format!("Arrow Error: {}", msg))
+                } else {
+                    PyRuntimeError::new_err(msg)
+                }
+            })
     }
 
     fn query_polars(&self, sql: &str) -> PyResult<Py<PyAny>> {
