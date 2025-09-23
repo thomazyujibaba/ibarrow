@@ -178,8 +178,8 @@ fn query_polars_impl(dsn: &str, user: &str, password: &str, sql: &str, config: &
     
     // Return Polars DataFrame directly from C Data Interface
     Python::with_gil(|py| {
-        let polars = py.import("polars")?;
-        let pa = py.import("pyarrow")?;
+        let polars = py.import_bound("polars")?;
+        let pa = py.import_bound("pyarrow")?;
         
         // Import from C capsules
         let schema = pa.getattr("Schema")?.getattr("_import_from_c")?.call1((schema_capsule,))?;
@@ -196,8 +196,8 @@ fn query_pandas_impl(dsn: &str, user: &str, password: &str, sql: &str, config: &
     let bytes = query_arrow_ipc_impl(dsn, user, password, sql, config)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     Python::with_gil(|py| {
-        let pyarrow = py.import("pyarrow")?;
-        let io = py.import("io")?;
+        let pyarrow = py.import_bound("pyarrow")?;
+        let io = py.import_bound("io")?;
         
         let buf = io.getattr("BytesIO")?.call1((bytes,))?;
         let table = pyarrow.getattr("ipc")?.getattr("open_stream")?.call1((buf,))?.getattr("read_all")?.call0()?;
@@ -291,8 +291,8 @@ fn query_arrow_c_data_with_df(dsn: &str, user: &str, password: &str, sql: &str, 
             if return_df {
                 // Return Polars DataFrame directly
                 Python::with_gil(|py| {
-                    let polars = py.import("polars")?;
-                    let pa = py.import("pyarrow")?;
+                    let polars = py.import_bound("polars")?;
+                    let pa = py.import_bound("pyarrow")?;
                     
                     let schema = pa.getattr("Schema")?.getattr("_import_from_c")?.call1((schema_capsule,))?;
                     let array = pa.getattr("RecordBatch")?.getattr("_import_from_c")?.call1((array_capsule, schema))?;
