@@ -39,9 +39,7 @@ pip install ibarrow
 - **MySQL**: `sudo apt-get install libmyodbc` (Ubuntu/Debian) or `sudo yum install mysql-connector-odbc` (RHEL/CentOS)
 
 ### macOS
-- **SQL Server**: [Microsoft ODBC Driver for SQL Server on macOS](https://docs.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server)
-- **PostgreSQL**: `brew install psqlodbc` (using Homebrew)
-- **MySQL**: `brew install mysql-connector-odbc` (using Homebrew)
+- **Note**: macOS support is currently not available. Please use Windows or Linux for now.
 
 ### Verify ODBC Installation
 
