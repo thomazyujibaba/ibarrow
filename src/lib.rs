@@ -233,9 +233,14 @@ fn query_polars_impl(
     // Return Polars DataFrame directly from Arrow IPC bytes
     Python::with_gil(|py| {
         let polars = py.import_bound("polars")?;
+        let io = py.import_bound("io")?;
 
-        // Pass bytes directly to polars.read_ipc
-        let df = polars.getattr("read_ipc")?.call1((bytes,))?;
+        // Create BytesIO object for polars.read_ipc
+        let buf = io.getattr("BytesIO")?.call1((bytes,))?;
+        
+        // Use polars.read_ipc with proper error handling
+        let df = polars.getattr("read_ipc")?.call1((buf,))?;
+        
         Ok(df.into())
     })
 }
