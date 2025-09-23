@@ -16,15 +16,13 @@ try:
     env_file = Path(__file__).parent.parent.parent / ".env"
     if env_file.exists():
         load_dotenv(env_file)
-        print(f"✅ Credenciais carregadas de {env_file}")
+        print(f"✅ Credentials loaded from {env_file}")
     else:
-        print(
-            "⚠️  Arquivo .env não encontrado. Use credenciais hardcoded ou configure o .env"
-        )
+        print("⚠️  .env file not found. Use hardcoded credentials or configure .env")
 except ImportError:
-    print("⚠️  python-dotenv não instalado. Use: pip install python-dotenv")
+    print("⚠️  python-dotenv not installed. Use: pip install python-dotenv")
 
-# Credenciais - usa variáveis de ambiente se disponível, senão usa valores de exemplo
+# Credentials - use environment variables if available, otherwise use example values
 DSN = os.getenv("DSN", "your_dsn")
 DB_USER = os.getenv("DB_USER", "username")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
