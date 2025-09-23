@@ -354,7 +354,7 @@ Configuration class for advanced query settings.
 - **`batch_size`**: Controls how many rows are fetched per batch from the database, avoiding row-by-row fetching for better performance.
 - **`query_timeout`**: Implemented via statement handle using `stmt.set_query_timeout()`, which is more reliable than connection string timeouts.
 - **`isolation_level`**: Standardized mapping from common names (e.g., "read_committed") to driver-specific ODBC connection string values (e.g., "Isolation Level=ReadCommitted").
-- **`query_polars`**: Optimized to use `pl.read_ipc()` directly with bytes, avoiding the overhead of `io.BytesIO` wrapper for better performance.
+- **`query_polars`**: Uses Arrow IPC stream with `pl.read_ipc()` for maximum compatibility and performance.
 - **Native Types**: Always preserves ODBC native types (INT, DECIMAL, FLOAT) as Arrow native types (Int64Array, Float64Array), avoiding expensive string conversions for maximum performance.
 - **Pipelining**: Always processes data in streaming fashion, writing each batch immediately as it's fetched. This keeps memory usage constant (e.g., 10MB) regardless of dataset size (even 80GB+).
 
@@ -364,7 +364,7 @@ Configuration class for advanced query settings.
 
 | Method | Level | Serialization | Memory Copies | Performance | Ideal Use |
 |--------|-------|-------------|---------------|-------------|-----------|
-| **`query_polars`** | **High** | **Zero** | **Zero** | **⭐⭐⭐⭐⭐** | **95% of cases (recommended)** |
+| **`query_polars`** | **High** | Arrow IPC Stream | 1x (serialization) | ⭐⭐⭐⭐ | **95% of cases (recommended)** |
 | **`query_pandas`** | **High** | Arrow IPC Stream | 1x (serialization) | ⭐⭐⭐ | Pandas compatibility |
 | `query_arrow_ipc` | Low | Arrow IPC Stream | 1x (serialization) | ⭐⭐⭐ | Maximum compatibility |
 | `query_arrow_c_data` | Low | **Zero** | **Zero** | **⭐⭐⭐⭐⭐** | Maximum performance |
@@ -372,9 +372,9 @@ Configuration class for advanced query settings.
 ### Typical Benchmarks (1M rows)
 
 ```
-query_polars:         ~30ms   (zero-copy + direct conversion) ⭐ RECOMMENDED
-query_pandas:         ~600ms  (serialization + pyarrow + pandas)
-query_arrow_ipc:      ~500ms  (serialization + deserialization)
+query_polars:         ~200ms  (Arrow IPC + polars.read_ipc) ⭐ RECOMMENDED
+query_pandas:         ~600ms  (Arrow IPC + pyarrow + pandas)
+query_arrow_ipc:      ~500ms  (Arrow IPC serialization)
 query_arrow_c_data:   ~50ms   (zero-copy via pointers)
 ```
 
@@ -382,10 +382,10 @@ query_arrow_c_data:   ~50ms   (zero-copy via pointers)
 
 **Native Types (Always Enabled):**
 ```
-- INT columns → Int64Array (zero-copy)
-- DECIMAL columns → DecimalArray (zero-copy)  
-- FLOAT columns → Float64Array (zero-copy)
-- Performance: ~30ms for 1M numeric rows
+- INT columns → Int64Array (native Arrow types)
+- DECIMAL columns → DecimalArray (native Arrow types)  
+- FLOAT columns → Float64Array (native Arrow types)
+- Performance: ~200ms for 1M numeric rows (Arrow IPC)
 ```
 
 **Pipelining (Always Enabled):**

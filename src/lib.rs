@@ -216,37 +216,27 @@ fn query_polars_impl(
     sql: &str,
     config: &QueryConfig,
 ) -> PyResult<Py<PyAny>> {
-    // High-level wrapper: use zero-copy Arrow C Data Interface for maximum performance
-    let (schema_capsule, array_capsule) = query_arrow_c_data_impl(dsn, user, password, sql, config)
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("IM002") || msg.contains("connection") {
-                PyConnectionError::new_err(format!("Connection Error: {}", msg))
-            } else if msg.contains("SQL") || msg.contains("syntax") {
-                PySQLError::new_err(format!("SQL Error: {}", msg))
-            } else if msg.contains("Arrow") || msg.contains("c_data") {
-                PyArrowError::new_err(format!("Arrow Error: {}", msg))
-            } else {
-                PyRuntimeError::new_err(msg)
-            }
-        })?;
+    // High-level wrapper: use Arrow IPC for maximum compatibility with Polars
+    let bytes = query_arrow_ipc_impl(dsn, user, password, sql, config).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("IM002") || msg.contains("connection") {
+            PyConnectionError::new_err(format!("Connection Error: {}", msg))
+        } else if msg.contains("SQL") || msg.contains("syntax") {
+            PySQLError::new_err(format!("SQL Error: {}", msg))
+        } else if msg.contains("Arrow") || msg.contains("c_data") {
+            PyArrowError::new_err(format!("Arrow Error: {}", msg))
+        } else {
+            PyRuntimeError::new_err(msg)
+        }
+    })?;
 
-    // Return Polars DataFrame directly from C Data Interface
+    // Return Polars DataFrame directly from Arrow IPC bytes
     Python::with_gil(|py| {
         let polars = py.import_bound("polars")?;
-        let pa = py.import_bound("pyarrow")?;
+        let io = py.import_bound("io")?;
 
-        // Import from C capsules
-        let schema = pa
-            .getattr("Schema")?
-            .getattr("_import_from_c")?
-            .call1((schema_capsule,))?;
-        let array = pa
-            .getattr("RecordBatch")?
-            .getattr("_import_from_c")?
-            .call1((array_capsule, schema))?;
-
-        let df = polars.getattr("from_arrow")?.call1((array,))?;
+        let buf = io.getattr("BytesIO")?.call1((bytes,))?;
+        let df = polars.getattr("read_ipc")?.call1((buf,))?;
         Ok(df.into())
     })
 }
