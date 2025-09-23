@@ -34,6 +34,13 @@ jobs:
       if: runner.os != 'Linux'
       run: pip install maturin
 
+    - name: Install ODBC drivers (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install unixodbc
+        brew install postgresql-odbc
+        brew install mysql-connector-odbc
+
     - name: Build package
       run: maturin build --release --out dist
 
