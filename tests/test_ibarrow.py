@@ -97,8 +97,6 @@ def test_query_arrow_c_data_with_dataframe_invalid_connection():
     """Test query_arrow_c_data with return_dataframe=True and invalid connection parameters."""
     with pytest.raises(ibarrow.PyConnectionError):
         conn = ibarrow.connect(
-            dsn="invalid_dsn",
-            user="invalid_user",
-            password="invalid_password"
+            dsn="invalid_dsn", user="invalid_user", password="invalid_password"
         )
         conn.query_arrow_c_data("SELECT 1", return_dataframe=True)
