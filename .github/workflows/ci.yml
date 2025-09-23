@@ -194,6 +194,12 @@ jobs:
         cp dist-ubuntu/*.whl dist/ 2>/dev/null || true
         cp dist-windows/*.whl dist/ 2>/dev/null || true
 
+    - name: Install ODBC drivers (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unixodbc-dev unixodbc
+
     - name: Install maturin (Linux)
       if: runner.os == 'Linux'
       run: pip install maturin[patchelf]
