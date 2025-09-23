@@ -43,7 +43,12 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install maturin
-      run: pip install maturin[patchelf]
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          pip install maturin[patchelf]
+        else
+          pip install maturin
+        fi
 
     - name: Build in debug mode
       run: maturin build
@@ -118,7 +123,12 @@ jobs:
         python-version: '3.11'
 
     - name: Install maturin
-      run: pip install maturin[patchelf]
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          pip install maturin[patchelf]
+        else
+          pip install maturin
+        fi
 
     - name: Build wheels
       run: maturin build --release --out dist
@@ -148,7 +158,12 @@ jobs:
         path: dist
 
     - name: Install maturin
-      run: pip install maturin[patchelf]
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          pip install maturin[patchelf]
+        else
+          pip install maturin
+        fi
 
     - name: Publish to PyPI
       env:
