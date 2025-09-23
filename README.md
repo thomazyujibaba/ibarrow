@@ -80,15 +80,45 @@ ibarrow provides a **two-level API** designed for different user needs:
 
 ## Quick Start
 
+### 🔗 **Connection Methods**
+
+ibarrow supports two ways to connect to databases:
+
+#### **Method 1: DSN (Data Source Name)**
+```python
+# Requires pre-configured DSN in ODBC Data Sources
+conn = ibarrow.connect(
+    dsn="my_database_dsn",
+    user="username", 
+    password="password"
+)
+```
+
+#### **Method 2: Direct Connection String (Recommended)**
+```python
+# Direct connection like pyodbc - no DSN configuration needed
+conn = ibarrow.connect(
+    dsn="DRIVER={SQL Server};SERVER=localhost;DATABASE=mydb;",
+    user="username",
+    password="password"
+)
+```
+
 ### 🚀 **Recommended Usage (95% of cases)**
 
 ```python
 import ibarrow
 
-# Direct Polars DataFrame (zero-copy, fastest)
-# Create connection
+# Option 1: Using DSN (Data Source Name)
 conn = ibarrow.connect(
     dsn="your_dsn",
+    user="username",
+    password="password"
+)
+
+# Option 2: Using direct connection string (like pyodbc)
+conn = ibarrow.connect(
+    dsn="DRIVER={SQL Server};SERVER=localhost;DATABASE=mydb;",
     user="username",
     password="password"
 )
@@ -237,12 +267,29 @@ print(df)
 Creates a connection object for database operations.
 
 **Parameters:**
-- `dsn` (str): ODBC Data Source Name
+- `dsn` (str): ODBC Data Source Name or full connection string
+  - **DSN format**: `"your_dsn"` (requires pre-configured DSN)
+  - **Connection string format**: `"DRIVER={SQL Server};SERVER=localhost;DATABASE=mydb;"` (direct connection)
 - `user` (str): Database username
 - `password` (str): Database password
 - `config` (QueryConfig, optional): Configuration object
 
 **Returns:** `IbarrowConnection` object
+
+**Connection String Examples:**
+```python
+# SQL Server
+dsn = "DRIVER={SQL Server};SERVER=localhost;DATABASE=mydb;"
+
+# PostgreSQL
+dsn = "DRIVER={PostgreSQL};SERVER=localhost;PORT=5432;DATABASE=mydb;"
+
+# MySQL
+dsn = "DRIVER={MySQL ODBC 8.0 Driver};SERVER=localhost;PORT=3306;DATABASE=mydb;"
+
+# Oracle
+dsn = "DRIVER={Oracle in OraClient19Home1};DBQ=localhost:1521/XE;"
+```
 
 ### `query_arrow_ipc(sql)`
 
