@@ -1,0 +1,48 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ibarrow"
+description = "High-performance ODBC to Arrow data connector for InterBase/Firebird"
+authors = [
+    {name = "Marina", email = "marina@marinapresentes.store"},
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries",
+]
+keywords = ["odbc", "arrow", "database", "interbase", "firebird", "performance"]
+dependencies = [
+    "pyarrow>=10.0.0",
+    "polars>=0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "python-dotenv>=0.19.0",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/marinapresentes/ibarrow"
+Repository = "https://github.com/marinapresentes/ibarrow"
+Issues = "https://github.com/marinapresentes/ibarrow/issues"
+
+[tool.maturin]
+module-name = "ibarrow"

@@ -1,0 +1,64 @@
+# Configuration for Stale Bot
+# This bot will mark issues and pull requests as stale after a period of inactivity
+
+# Number of days of inactivity before an issue becomes stale
+daysUntilStale: 30
+
+# Number of days of inactivity before a stale issue is closed
+daysUntilClose: 7
+
+# Issues with these labels will never be considered stale
+exemptLabels:
+  - pinned
+  - security
+  - good first issue
+  - help wanted
+
+# Set to true to ignore issues in a project (defaults to false)
+exemptProjects: false
+
+# Set to true to ignore issues in a milestone (defaults to false)
+exemptMilestones: false
+
+# Set to true to ignore issues with an assignee (defaults to false)
+exemptAssignees: false
+
+# Label to use when marking as stale
+staleLabel: stale
+
+# Comment to post when marking as stale
+markComment: >
+  This issue has been automatically marked as stale because it has not had
+  recent activity. It will be closed if no further activity occurs. Thank you
+  for your contributions.
+
+# Comment to post when closing a stale issue
+closeComment: >
+  This issue has been automatically closed due to inactivity. If you believe
+  this issue should remain open, please leave a comment and we will reopen it.
+
+# Set to true to enable stale issue detection
+enable: true
+
+# Set to true to enable stale pull request detection
+enablePullRequests: true
+
+# Number of days of inactivity before a pull request becomes stale
+daysUntilStalePullRequest: 30
+
+# Number of days of inactivity before a stale pull request is closed
+daysUntilClosePullRequest: 7
+
+# Label to use when marking a pull request as stale
+stalePullRequestLabel: stale
+
+# Comment to post when marking a pull request as stale
+markPullRequestComment: >
+  This pull request has been automatically marked as stale because it has not had
+  recent activity. It will be closed if no further activity occurs. Thank you
+  for your contributions.
+
+# Comment to post when closing a stale pull request
+closePullRequestComment: >
+  This pull request has been automatically closed due to inactivity. If you believe
+  this pull request should remain open, please leave a comment and we will reopen it.
