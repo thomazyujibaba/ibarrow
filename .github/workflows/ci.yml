@@ -211,4 +211,5 @@ jobs:
     - name: Publish to PyPI
       env:
         MATURIN_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        MATURIN_USERNAME: __token__
       run: maturin publish --skip-existing
