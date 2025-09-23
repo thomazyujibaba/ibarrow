@@ -237,10 +237,9 @@ fn query_polars_impl(
 
         // Create BytesIO object for polars.read_ipc
         let buf = io.getattr("BytesIO")?.call1((bytes,))?;
-        
+
         // Use polars.read_ipc with proper error handling
         let df = polars.getattr("read_ipc")?.call1((buf,))?;
-        
         Ok(df.into())
     })
 }

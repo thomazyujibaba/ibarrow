@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.1.4]
+
+### Fixed
+- Fixed code formatting issues in Rust source code
+- Removed trailing whitespace in lib.rs
+
+## [0.1.3.2]
+
+### Fixed
+- Simplified polars.read_ipc call for better compatibility
+
+## [0.1.3.1]
+
+### Fixed
+- Fixed code formatting with cargo fmt
+
+## [0.1.3]
+
+### Fixed
+- Fixed query_polars to use Arrow IPC and update documentation
+- Fixed wheel installation in CI to match Python version
+
+## [0.1.1] - 2024-12-19
+
+### Added
+- Support for direct connection strings in ibarrow
+- Updated README with direct connection string support documentation
+
+### Fixed
+- Fixed PyPI credentials for maturin publish
+- Fixed ODBC installation in publish job
+- Fixed artifact name conflict in CI workflow
+- Recreated ci.yml with clean cross-platform wheel installation
+- Fixed Windows wheel installation with Python glob
+- Fixed Windows wheel installation in CI
+- Fixed error handling in query_polars and query_pandas
+- Fixed Rust code formatting
+- Fixed publish workflow ODBC linking issues
+
 ## [0.1.0]
 
 ### Added
