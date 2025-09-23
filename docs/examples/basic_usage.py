@@ -5,11 +5,9 @@ This file demonstrates common usage patterns and best practices.
 """
 
 import os
-import sys
 from pathlib import Path
 import ibarrow
 import polars as pl
-import pandas as pd
 
 # Carrega credenciais do .env se disponível
 try:
@@ -36,13 +34,11 @@ TEST_SQL = os.getenv("TEST_SQL", "SELECT * FROM your_table LIMIT 1000")
 def basic_polars_example():
     """Basic example using Polars (recommended for most users)."""
 
+    # Create connection
+    conn = ibarrow.connect(dsn=DSN, user=DB_USER, password=DB_PASSWORD)
+
     # Simple query with Polars DataFrame
-    df = ibarrow.query_polars(
-        dsn=DSN,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        sql=TEST_SQL,
-    )
+    df = conn.query_polars(TEST_SQL)
 
     print(f"Retrieved {len(df)} rows")
     print(df.head())

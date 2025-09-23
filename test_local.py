@@ -101,7 +101,11 @@ try:
     # Teste 2: Polars DataFrame
     print("\n2️⃣ Testando query_polars...")
     try:
-        df = ibarrow.query_polars(DSN, DB_USER, DB_PASSWORD, TEST_SQL, config)
+        # Create connection
+        conn = ibarrow.connect(DSN, DB_USER, DB_PASSWORD, config)
+
+        # Query and get Polars DataFrame
+        df = conn.query_polars(TEST_SQL)
         print(f"   ✅ Sucesso! DataFrame shape: {df.shape}")
         print(f"   📊 Colunas: {df.columns}")
         print("   🔍 Primeiras linhas:")
@@ -112,7 +116,11 @@ try:
     # Teste 3: Pandas DataFrame
     print("\n3️⃣ Testando query_pandas...")
     try:
-        df = ibarrow.query_pandas(DSN, DB_USER, DB_PASSWORD, TEST_SQL, config)
+        # Create connection
+        conn = ibarrow.connect(DSN, DB_USER, DB_PASSWORD, config)
+
+        # Query and get Pandas DataFrame
+        df = conn.query_pandas(TEST_SQL)
         print(f"   ✅ Sucesso! DataFrame shape: {df.shape}")
         print(f"   📊 Colunas: {list(df.columns)}")
         print("   🔍 Primeiras linhas:")

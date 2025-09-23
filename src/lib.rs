@@ -3,12 +3,13 @@ use arrow_ipc::writer::StreamWriter;
 use odbc_api::{Environment, ConnectionOptions};
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
+use pyo3::exceptions::PyRuntimeError;
 use arrow_odbc::OdbcReaderBuilder;
 use arrow::record_batch::RecordBatchReader;
 use arrow::array::Array;
 use serde::{Deserialize, Serialize};
-use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema, to_ffi};
-use std::ffi::{c_void, CString};
+use arrow::ffi::{to_ffi};
+use std::ffi::CString;
 
 use pyo3::create_exception;
 use pyo3::exceptions::PyException;
@@ -17,21 +18,65 @@ create_exception!(ibarrow, PyConnectionError, PyException);
 create_exception!(ibarrow, PySQLError, PyException);
 create_exception!(ibarrow, PyArrowError, PyException);
 
+// Connection class for maintaining database session
+#[pyclass]
+pub struct IbarrowConnection {
+    dsn: String,
+    user: String,
+    password: String,
+    config: QueryConfig,
+}
+
+#[pymethods]
+impl IbarrowConnection {
+    #[new]
+    fn new(dsn: &str, user: &str, password: &str, config: Option<&QueryConfig>) -> Self {
+        let config = config.cloned().unwrap_or_else(|| QueryConfig::new(None, None, None, None, None, None, None));
+        Self {
+            dsn: dsn.to_string(),
+            user: user.to_string(),
+            password: password.to_string(),
+            config,
+        }
+    }
+
+    fn query_arrow_ipc(&self, sql: &str) -> PyResult<Vec<u8>> {
+        query_arrow_ipc_impl(&self.dsn, &self.user, &self.password, sql, &self.config)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
+
+    fn query_polars(&self, sql: &str) -> PyResult<Py<PyAny>> {
+        query_polars_impl(&self.dsn, &self.user, &self.password, sql, &self.config)
+    }
+
+    fn query_pandas(&self, sql: &str) -> PyResult<Py<PyAny>> {
+        query_pandas_impl(&self.dsn, &self.user, &self.password, sql, &self.config)
+    }
+
+    fn query_arrow_c_data(&self, sql: &str, return_dataframe: Option<bool>) -> PyResult<Py<PyAny>> {
+        query_arrow_c_data_with_df(&self.dsn, &self.user, &self.password, sql, &self.config, return_dataframe)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("IbarrowConnection(dsn='{}', user='{}')", self.dsn, self.user)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[pyclass]
 pub struct QueryConfig {
     #[pyo3(get, set)]
-    pub batch_size: usize,
+    pub batch_size: Option<u32>,
+    #[pyo3(get, set)]
+    pub max_text_size: Option<u32>,
+    #[pyo3(get, set)]
+    pub max_binary_size: Option<u32>,
     #[pyo3(get, set)]
     pub read_only: bool,
     #[pyo3(get, set)]
     pub connection_timeout: Option<u32>,
     #[pyo3(get, set)]
     pub query_timeout: Option<u32>,
-    #[pyo3(get, set)]
-    pub max_text_size: Option<usize>,
-    #[pyo3(get, set)]
-    pub max_binary_size: Option<usize>,
     #[pyo3(get, set)]
     pub isolation_level: Option<String>,
 }
@@ -40,107 +85,27 @@ pub struct QueryConfig {
 impl QueryConfig {
     #[new]
     fn new(
-        batch_size: Option<usize>,
+        batch_size: Option<u32>,
+        max_text_size: Option<u32>,
+        max_binary_size: Option<u32>,
         read_only: Option<bool>,
         connection_timeout: Option<u32>,
         query_timeout: Option<u32>,
-        max_text_size: Option<usize>,
-        max_binary_size: Option<usize>,
         isolation_level: Option<String>,
     ) -> Self {
         Self {
-            batch_size: batch_size.unwrap_or(1000),
-            read_only: read_only.unwrap_or(true),
-            connection_timeout,
-            query_timeout,
+            batch_size,
             max_text_size,
             max_binary_size,
+            read_only: read_only.unwrap_or(false),
+            connection_timeout,
+            query_timeout,
             isolation_level,
         }
     }
 }
 
-
-#[pyfunction]
-fn query_arrow_ipc(
-    dsn: &str,
-    user: &str,
-    password: &str,
-    sql: &str,
-    config: Option<&QueryConfig>,
-) -> PyResult<Vec<u8>> {
-    let config = config.cloned().unwrap_or_else(|| QueryConfig::new(None, None, None, None, None, None, None));
-    
-    match query_arrow_ipc_impl(dsn, user, password, sql, &config) {
-        Ok(buf) => Ok(buf),
-        Err(e) => {
-            let msg = e.to_string();
-
-            if msg.contains("IM002") || msg.contains("connection") {
-                Err(PyConnectionError::new_err(format!("Connection Error: {}", msg)))
-            } else if msg.contains("SQL") || msg.contains("syntax") {
-                Err(PySQLError::new_err(format!("SQL Error: {}", msg)))
-            } else if msg.contains("Arrow") || msg.contains("ipc") {
-                Err(PyArrowError::new_err(format!("Arrow Error: {}", msg)))
-            } else {
-                Err(pyo3::exceptions::PyRuntimeError::new_err(msg))
-            }
-        }
-    }
-}
-
-#[pyfunction]
-fn query_polars(dsn: &str, user: &str, password: &str, sql: &str, config: Option<&QueryConfig>) -> PyResult<Py<PyAny>> {
-    // High-level wrapper: use zero-copy Arrow C Data Interface for maximum performance
-    let config = config.cloned().unwrap_or_else(|| QueryConfig::new(None, None, None, None, None, None, None));
-    let (schema_capsule, array_capsule) = query_arrow_c_data_impl(dsn, user, password, sql, &config)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-    
-    // Return Polars DataFrame directly from C Data Interface
-    Python::with_gil(|py| {
-        let polars = py.import("polars")?;
-        let pa = py.import("pyarrow")?;
-        
-        // Import from C capsules
-        let schema = pa.getattr("Schema")?.getattr("_import_from_c")?.call1((schema_capsule,))?;
-        let array = pa.getattr("RecordBatch")?.getattr("_import_from_c")?.call1((array_capsule, schema))?;
-        
-        let df = polars.getattr("from_arrow")?.call1((array,))?;
-        Ok(df.into())
-    })
-}
-
-#[pyfunction]
-fn query_pandas(dsn: &str, user: &str, password: &str, sql: &str, config: Option<&QueryConfig>) -> PyResult<Py<PyAny>> {
-    // High-level wrapper: use Arrow IPC for maximum compatibility with Pandas
-    let bytes = query_arrow_ipc(dsn, user, password, sql, config)?;
-    Python::with_gil(|py| {
-        let pyarrow = py.import("pyarrow")?;
-        let io = py.import("io")?;
-        
-        let buf = io.getattr("BytesIO")?.call1((bytes,))?;
-        let table = pyarrow.getattr("ipc")?.getattr("open_stream")?.call1((buf,))?.getattr("read_all")?.call0()?;
-        let df = table.getattr("to_pandas")?.call0()?;
-        Ok(df.into())
-    })
-}
-
-// Temporarily disabled - Arrow C Data Interface functionality
-// #[pyfunction]
-// fn query_arrow_c_data(
-//     dsn: &str,
-//     user: &str,
-//     password: &str,
-//     sql: &str,
-//     config: Option<&QueryConfig>,
-//     return_dataframe: Option<bool>
-// ) -> PyResult<Py<PyAny>> {
-//     // Implementation temporarily disabled
-// }
-
-
-
-
+// Implementation function for Arrow IPC
 fn query_arrow_ipc_impl(dsn: &str, user: &str, password: &str, sql: &str, config: &QueryConfig) -> Result<Vec<u8>> {
     let env = Environment::new()?;
     
@@ -181,10 +146,8 @@ fn query_arrow_ipc_impl(dsn: &str, user: &str, password: &str, sql: &str, config
     let binary_size = config.max_binary_size.unwrap_or(65536);
     
     let mut builder = OdbcReaderBuilder::new();
-    builder.with_max_text_size(text_size);
-    builder.with_max_binary_size(binary_size);
-        // .with_batch_size(config.batch_size) // Not available in this version
-        // .with_infer_schema_from_odbc(true); // Not available in this version
+    builder.with_max_text_size(text_size as usize);
+    builder.with_max_binary_size(binary_size as usize);
     
     let arrow_record_batches = builder.build(cursor)?;
     
@@ -196,7 +159,6 @@ fn query_arrow_ipc_impl(dsn: &str, user: &str, password: &str, sql: &str, config
         // This keeps memory usage constant instead of accumulating all data
         let mut writer = StreamWriter::try_new(&mut bytes, &schema)?;
         
-        // Always use pipelining for maximum performance and memory efficiency
         for batch in arrow_record_batches {
             writer.write(&batch?)?;
             // Each batch is written immediately, freeing memory
@@ -208,7 +170,43 @@ fn query_arrow_ipc_impl(dsn: &str, user: &str, password: &str, sql: &str, config
     Ok(bytes)
 }
 
-// Arrow C Data Interface implementation
+// Implementation function for Polars
+fn query_polars_impl(dsn: &str, user: &str, password: &str, sql: &str, config: &QueryConfig) -> PyResult<Py<PyAny>> {
+    // High-level wrapper: use zero-copy Arrow C Data Interface for maximum performance
+    let (schema_capsule, array_capsule) = query_arrow_c_data_impl(dsn, user, password, sql, config)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    
+    // Return Polars DataFrame directly from C Data Interface
+    Python::with_gil(|py| {
+        let polars = py.import("polars")?;
+        let pa = py.import("pyarrow")?;
+        
+        // Import from C capsules
+        let schema = pa.getattr("Schema")?.getattr("_import_from_c")?.call1((schema_capsule,))?;
+        let array = pa.getattr("RecordBatch")?.getattr("_import_from_c")?.call1((array_capsule, schema))?;
+        
+        let df = polars.getattr("from_arrow")?.call1((array,))?;
+        Ok(df.into())
+    })
+}
+
+// Implementation function for Pandas
+fn query_pandas_impl(dsn: &str, user: &str, password: &str, sql: &str, config: &QueryConfig) -> PyResult<Py<PyAny>> {
+    // High-level wrapper: use Arrow IPC for maximum compatibility with Pandas
+    let bytes = query_arrow_ipc_impl(dsn, user, password, sql, config)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    Python::with_gil(|py| {
+        let pyarrow = py.import("pyarrow")?;
+        let io = py.import("io")?;
+        
+        let buf = io.getattr("BytesIO")?.call1((bytes,))?;
+        let table = pyarrow.getattr("ipc")?.getattr("open_stream")?.call1((buf,))?.getattr("read_all")?.call0()?;
+        let df = table.getattr("to_pandas")?.call0()?;
+        Ok(df.into())
+    })
+}
+
+// Implementation function for Arrow C Data Interface
 fn query_arrow_c_data_impl(dsn: &str, user: &str, password: &str, sql: &str, config: &QueryConfig) -> Result<(Py<PyAny>, Py<PyAny>)> {
     let env = Environment::new()?;
     
@@ -248,8 +246,8 @@ fn query_arrow_c_data_impl(dsn: &str, user: &str, password: &str, sql: &str, con
     let binary_size = config.max_binary_size.unwrap_or(65536);
     
     let mut builder = OdbcReaderBuilder::new();
-    builder.with_max_text_size(text_size);
-    builder.with_max_binary_size(binary_size);
+    builder.with_max_text_size(text_size as usize);
+    builder.with_max_binary_size(binary_size as usize);
     
     let arrow_record_batches = builder.build(cursor)?;
     
@@ -265,7 +263,7 @@ fn query_arrow_c_data_impl(dsn: &str, user: &str, password: &str, sql: &str, con
     
     // Use the first batch for Arrow C Data Interface
     let first_batch = &batches[0];
-    let schema = first_batch.schema();
+    let _schema = first_batch.schema();
 
     // Convert RecordBatch to StructArray for FFI
     use arrow::array::StructArray;
@@ -284,19 +282,11 @@ fn query_arrow_c_data_impl(dsn: &str, user: &str, password: &str, sql: &str, con
     })
 }
 
-#[pyfunction]
-fn query_arrow_c_data(
-    dsn: &str,
-    user: &str,
-    password: &str,
-    sql: &str,
-    config: Option<&QueryConfig>,
-    return_dataframe: Option<bool>
-) -> PyResult<Py<PyAny>> {
-    let config = config.cloned().unwrap_or_else(|| QueryConfig::new(None, None, None, None, None, None, None));
+// Implementation function for Arrow C Data with DataFrame option
+fn query_arrow_c_data_with_df(dsn: &str, user: &str, password: &str, sql: &str, config: &QueryConfig, return_dataframe: Option<bool>) -> PyResult<Py<PyAny>> {
     let return_df = return_dataframe.unwrap_or(false);
     
-    match query_arrow_c_data_impl(dsn, user, password, sql, &config) {
+    match query_arrow_c_data_impl(dsn, user, password, sql, config) {
         Ok((schema_capsule, array_capsule)) => {
             if return_df {
                 // Return Polars DataFrame directly
@@ -334,14 +324,18 @@ fn query_arrow_c_data(
     }
 }
 
+// Standalone connect function for backward compatibility
+#[pyfunction]
+fn connect(dsn: &str, user: &str, password: &str, config: Option<&QueryConfig>) -> PyResult<IbarrowConnection> {
+    Ok(IbarrowConnection::new(dsn, user, password, config))
+}
 
 #[pymodule]
 fn ibarrow(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(query_arrow_ipc, m)?)?;
-    m.add_function(wrap_pyfunction!(query_polars, m)?)?;
-    m.add_function(wrap_pyfunction!(query_pandas, m)?)?;
-    m.add_function(wrap_pyfunction!(query_arrow_c_data, m)?)?;
+    // Register the connection class and standalone function
+    m.add_class::<IbarrowConnection>()?;
     m.add_class::<QueryConfig>()?;
+    m.add_function(wrap_pyfunction!(connect, m)?)?;
     m.add("PyConnectionError", _py.get_type_bound::<PyConnectionError>())?;
     m.add("PySQLError", _py.get_type_bound::<PySQLError>())?;
     m.add("PyArrowError", _py.get_type_bound::<PyArrowError>())?;

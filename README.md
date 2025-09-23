@@ -88,12 +88,15 @@ ibarrow provides a **two-level API** designed for different user needs:
 import ibarrow
 
 # Direct Polars DataFrame (zero-copy, fastest)
-df = ibarrow.query_polars(
+# Create connection
+conn = ibarrow.connect(
     dsn="your_dsn",
-    user="username", 
-    password="password",
-    sql="SELECT * FROM your_table"
+    user="username",
+    password="password"
 )
+
+# Query and get Polars DataFrame
+df = conn.query_polars("SELECT * FROM your_table")
 
 print(df)
 ```
@@ -132,14 +135,16 @@ config = ibarrow.QueryConfig(
     isolation_level="READ_COMMITTED"  # Transaction isolation
 )
 
-# Query with custom configuration
-arrow_bytes = ibarrow.query_arrow_ipc(
+# Create connection with configuration
+conn = ibarrow.connect(
     dsn="your_dsn",
     user="username",
     password="password",
-    sql="SELECT * FROM your_table",
     config=config
 )
+
+# Use the connection
+arrow_bytes = conn.query_arrow_ipc("SELECT * FROM your_table")
 ```
 
 ### Direct DataFrame Integration
@@ -148,20 +153,18 @@ arrow_bytes = ibarrow.query_arrow_ipc(
 import ibarrow
 
 # Direct conversion to Polars DataFrame (uses pl.read_ipc internally)
-df_polars = ibarrow.query_polars(
+# Create connection
+conn = ibarrow.connect(
     dsn="your_dsn",
     user="username",
-    password="password", 
-    sql="SELECT * FROM your_table"
+    password="password"
 )
 
-# Direct conversion to Pandas DataFrame (uses PyArrow internally)
-df_pandas = ibarrow.query_pandas(
-    dsn="your_dsn",
-    user="username",
-    password="password", 
-    sql="SELECT * FROM your_table"
-)
+# Get Polars DataFrame
+df_polars = conn.query_polars("SELECT * FROM your_table")
+
+# Get Pandas DataFrame
+df_pandas = conn.query_pandas("SELECT * FROM your_table")
 
 print(df_polars)
 print(df_pandas)
@@ -177,21 +180,18 @@ import polars as pl
 import pyarrow as pa
 
 # Zero-copy conversion to Polars DataFrame (fastest)
-df_polars = ibarrow.query_arrow_c_data(
-    dsn="your_dsn",
-    user="username", 
-    password="password",
-    sql="SELECT * FROM your_table",
-    return_dataframe=True
-)
-
-# Get raw Arrow C Data Interface capsules for manual control
-schema_capsule, array_capsule = ibarrow.query_arrow_c_data(
+# Create connection
+conn = ibarrow.connect(
     dsn="your_dsn",
     user="username",
-    password="password", 
-    sql="SELECT * FROM your_table"
+    password="password"
 )
+
+# Get Polars DataFrame directly
+df_polars = conn.query_arrow_c_data("SELECT * FROM your_table", return_dataframe=True)
+
+# Or get raw PyCapsules for manual control
+schema_capsule, array_capsule = conn.query_arrow_c_data("SELECT * FROM your_table")
 
 # Convert to PyArrow Table using zero-copy
 schema = pa.Schema._import_from_c(schema_capsule)
@@ -215,12 +215,15 @@ import ibarrow
 import polars as pl
 
 # Get raw Arrow IPC bytes
-arrow_bytes = ibarrow.query_arrow_ipc(
+# Create connection
+conn = ibarrow.connect(
     dsn="your_dsn",
     user="username",
-    password="password",
-    sql="SELECT * FROM your_table"
+    password="password"
 )
+
+# Get Arrow IPC bytes
+arrow_bytes = conn.query_arrow_ipc("SELECT * FROM your_table")
 
 # Convert to Polars DataFrame manually
 df = pl.read_ipc(arrow_bytes)
@@ -229,16 +232,24 @@ print(df)
 
 ## API Reference
 
-### `query_arrow_ipc(dsn, user, password, sql, config=None)`
+### `ibarrow.connect(dsn, user, password, config=None)`
 
-Execute a SQL query and return Arrow IPC bytes.
+Creates a connection object for database operations.
 
 **Parameters:**
 - `dsn` (str): ODBC Data Source Name
 - `user` (str): Database username
 - `password` (str): Database password
+- `config` (QueryConfig, optional): Configuration object
+
+**Returns:** `IbarrowConnection` object
+
+### `conn.query_arrow_ipc(sql)`
+
+Execute a SQL query and return Arrow IPC bytes.
+
+**Parameters:**
 - `sql` (str): SQL query to execute
-- `config` (QueryConfig, optional): Configuration object for advanced settings
 
 **Returns:** `bytes` - Arrow IPC format data
 
@@ -247,7 +258,7 @@ Execute a SQL query and return Arrow IPC bytes.
 - `PySQLError`: SQL syntax or execution errors
 - `PyArrowError`: Arrow data processing errors
 
-### `query_polars(dsn, user, password, sql, config=None)`
+### `conn.query_polars(sql)`
 
 Execute a SQL query and return a Polars DataFrame directly.
 
@@ -356,7 +367,11 @@ The library provides specific exception types for different error scenarios:
 import ibarrow
 
 try:
-    df = ibarrow.query_polars(dsn, user, password, sql, batch_size)
+    # Create connection
+    conn = ibarrow.connect(dsn, user, password)
+    
+    # Query with batch size
+    df = conn.query_polars(sql)
 except ibarrow.PyConnectionError as e:
     print(f"Connection failed: {e}")
 except ibarrow.PySQLError as e:

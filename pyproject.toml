@@ -4,9 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "ibarrow"
+version = "0.1.0"
 description = "High-performance ODBC to Arrow data connector for InterBase/Firebird"
 authors = [
-    {name = "Marina", email = "marina@marinapresentes.store"},
+    {name = "Thomaz Yuji Baba", email = "thomaz.yuji@gmail.com"},
 ]
 license = {text = "MIT"}
 readme = "README.md"
@@ -40,9 +41,9 @@ dev = [
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://github.com/marinapresentes/ibarrow"
-Repository = "https://github.com/marinapresentes/ibarrow"
-Issues = "https://github.com/marinapresentes/ibarrow/issues"
+Homepage = "https://github.com/thomazyujibaba/ibarrow"
+Repository = "https://github.com/thomazyujibaba/ibarrow"
+Issues = "https://github.com/thomazyujibaba/ibarrow/issues"
 
 [tool.maturin]
 module-name = "ibarrow"
