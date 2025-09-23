@@ -35,7 +35,7 @@ git push origin main --tags
 ```
 
 ### 2. O GitHub Actions fará automaticamente:
-- ✅ Compilar para Windows, Linux, macOS
+- ✅ Compilar para Windows, Linux
 - ✅ Gerar wheels para Python 3.8-3.12
 - ✅ Publicar no PyPI
 - ✅ Criar release no GitHub

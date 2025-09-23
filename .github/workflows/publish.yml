@@ -30,7 +30,11 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y unixodbc-dev unixodbc
+        sudo apt-get install -y unixodbc-dev unixodbc libodbc1
+        # Install additional ODBC drivers
+        sudo apt-get install -y odbc-postgresql odbc-mysql
+        # Verify ODBC installation
+        odbcinst -j
 
     - name: Install maturin (Linux)
       if: runner.os == 'Linux'
@@ -40,7 +44,14 @@ jobs:
       if: runner.os == 'Windows'
       run: pip install maturin
 
+    - name: Clean cargo cache
+      run: cargo clean
+
     - name: Build package
+      env:
+        # Help linker find ODBC libraries
+        LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
+        LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
       run: maturin build --release --out dist
 
     - name: Upload artifacts
