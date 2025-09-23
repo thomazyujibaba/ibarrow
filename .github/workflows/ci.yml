@@ -62,7 +62,6 @@ jobs:
     - name: Install built package
       run: |
         # Install the wheel file (cross-platform approach)
-        # Use Python to find and install the wheel file
         python -c "
         import glob
         import subprocess
