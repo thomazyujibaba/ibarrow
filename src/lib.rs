@@ -259,12 +259,26 @@ fn query_arrow_ipc_impl(
         // This keeps memory usage constant instead of accumulating all data
         let mut writer = StreamWriter::try_new(&mut bytes, &schema)?;
 
+        let mut has_data = false;
         for batch in arrow_record_batches {
             writer.write(&batch?)?;
+            has_data = true;
             // Each batch is written immediately, freeing memory
             // Memory usage stays constant regardless of dataset size
         }
+
+        // Always finish the writer to ensure proper footer
         writer.finish()?;
+
+        // If no data was written, return an empty but valid Arrow stream
+        if !has_data {
+            // Create an empty record batch with the schema
+            use arrow::record_batch::RecordBatch;
+            let empty_batch = RecordBatch::new_empty(schema.clone());
+            let mut writer = StreamWriter::try_new(&mut bytes, &schema)?;
+            writer.write(&empty_batch)?;
+            writer.finish()?;
+        }
     }
 
     Ok(bytes)
