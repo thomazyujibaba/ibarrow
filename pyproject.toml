@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ibarrow"
-version = "0.1.6"
+version = "0.1.7"
 description = "High-performance ODBC to Arrow data connector for InterBase/Firebird"
 authors = [
     {name = "Thomaz Yuji Baba", email = "thomaz.yuji@gmail.com"},

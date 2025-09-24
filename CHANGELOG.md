@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.7]
+
+### Fixed
+- **Critical Fix**: Return valid empty Arrow streams instead of errors when queries return no result set
+- **Improved Error Handling**: `query_arrow_ipc_impl` now returns empty but valid Arrow streams instead of throwing errors for queries with no data
+- **Better Compatibility**: Ensures Python consumers always receive valid Arrow data structures, even for empty results
+- **Robust Stream Handling**: Fixed InvalidFooter errors by ensuring proper stream finalization in all cases
+
+### Technical Details
+- Modified `query_arrow_ipc_impl` to return empty Arrow streams with proper schema when `cursor` is `None`
+- Maintained error handling for `query_arrow_c_data_impl` as it requires different return type
+- Improved stream writer finalization to prevent InvalidFooter errors
+- Enhanced compatibility with Firebird/InterBase queries that may not return result sets
+
 ## [0.1.6]
 
 ### Fixed

@@ -237,8 +237,15 @@ fn query_arrow_ipc_impl(
         Some(cursor) => cursor,
         None => {
             // Query executed successfully but returned no result set
-            // This can happen with some Firebird/InterBase queries
-            return Err(anyhow!("Query executed but returned no result set. This may indicate a connection issue or the query returned no data."));
+            // Return a valid empty Arrow stream instead of error
+            let mut bytes = Vec::<u8>::new();
+            let schema = arrow::datatypes::Schema::empty();
+            let mut writer = StreamWriter::try_new(&mut bytes, &schema)?;
+            let empty_batch =
+                arrow::record_batch::RecordBatch::new_empty(std::sync::Arc::new(schema));
+            writer.write(&empty_batch)?;
+            writer.finish()?;
+            return Ok(bytes);
         }
     };
 
@@ -381,7 +388,7 @@ fn query_arrow_c_data_impl(
         Some(cursor) => cursor,
         None => {
             // Query executed successfully but returned no result set
-            // This can happen with some Firebird/InterBase queries
+            // Return empty C Data Interface result
             return Err(anyhow!("Query executed but returned no result set. This may indicate a connection issue or the query returned no data."));
         }
     };
