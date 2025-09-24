@@ -147,13 +147,13 @@ impl IbarrowConnection {
     }
 
     fn test_connection(&self) -> PyResult<bool> {
-        // Test connection with a simple query
-        // Returns True if connection is successful, False otherwise
+        // Test connection with a query that always returns data
+        // Use RDB$DATABASE which exists in all Firebird/InterBase databases
         match query_arrow_ipc_impl(
             &self.dsn,
             &self.user,
             &self.password,
-            "SELECT 1",
+            "SELECT 1 as test_value FROM RDB$DATABASE",
             &self.config,
         ) {
             Ok(_) => Ok(true),
@@ -270,8 +270,11 @@ fn query_arrow_ipc_impl(
         // Always finish the writer to ensure proper footer
         writer.finish()?;
 
-        // If no data was written, return an empty but valid Arrow stream
+        // If no data was written, create a minimal valid Arrow stream
         if !has_data {
+            // Reset bytes vector for empty stream
+            bytes.clear();
+
             // Create an empty record batch with the schema
             use arrow::record_batch::RecordBatch;
             let empty_batch = RecordBatch::new_empty(schema.clone());
