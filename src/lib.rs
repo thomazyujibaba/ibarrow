@@ -237,12 +237,14 @@ fn query_arrow_ipc_impl(
         Some(cursor) => cursor,
         None => {
             // Query executed successfully but returned no result set
-            // Return a valid empty Arrow stream instead of error
+            // Return a valid empty Arrow stream with a simple schema
             let mut bytes = Vec::<u8>::new();
-            let schema = arrow::datatypes::Schema::empty();
-            let mut writer = StreamWriter::try_new(&mut bytes, &schema)?;
-            let empty_batch =
-                arrow::record_batch::RecordBatch::new_empty(std::sync::Arc::new(schema));
+            use arrow::datatypes::{DataType, Field, Schema};
+            let schema = Schema::new(vec![Field::new("empty", DataType::Int32, true)]);
+            let schema_ref = std::sync::Arc::new(schema);
+
+            let mut writer = StreamWriter::try_new(&mut bytes, &schema_ref)?;
+            let empty_batch = arrow::record_batch::RecordBatch::new_empty(schema_ref);
             writer.write(&empty_batch)?;
             writer.finish()?;
             return Ok(bytes);
@@ -274,21 +276,15 @@ fn query_arrow_ipc_impl(
             // Memory usage stays constant regardless of dataset size
         }
 
-        // Always finish the writer to ensure proper footer
-        writer.finish()?;
-
-        // If no data was written, create a minimal valid Arrow stream
+        // If no data was written, write an empty batch to ensure valid stream
         if !has_data {
-            // Reset bytes vector for empty stream
-            bytes.clear();
-
-            // Create an empty record batch with the schema
             use arrow::record_batch::RecordBatch;
             let empty_batch = RecordBatch::new_empty(schema.clone());
-            let mut writer = StreamWriter::try_new(&mut bytes, &schema)?;
             writer.write(&empty_batch)?;
-            writer.finish()?;
         }
+
+        // Always finish the writer to ensure proper footer
+        writer.finish()?;
     }
 
     Ok(bytes)

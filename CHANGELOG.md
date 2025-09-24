@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.8]
+
+### Fixed
+- **CRITICAL**: Fixed InvalidFooter error by using valid schema instead of Schema::empty()
+- **Stream Logic**: Corrected empty data handling - write empty batch BEFORE finish(), not after
+- **Schema Validation**: Use proper schema with Int32 field for empty streams instead of completely empty schema
+- **Writer Management**: Eliminated double-writer creation that was corrupting streams
+
+### Technical Details
+- Changed `Schema::empty()` to `Schema::new(vec![Field::new("empty", DataType::Int32, true)])` for cursor None case
+- Fixed stream writing order: write empty batch first, then call finish() - not the reverse
+- Removed problematic `bytes.clear()` and writer recreation logic
+- Ensures single writer per stream to prevent corruption
+
 ## [0.1.7]
 
 ### Fixed
