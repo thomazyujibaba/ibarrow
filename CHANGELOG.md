@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6]
+
+### Fixed
+- Fixed InvalidFooter error in Arrow IPC stream by ensuring proper footer is written even when no data is returned
+- Added empty record batch creation for queries with no results to maintain valid Arrow stream format
+- Fixed schema ownership issues in empty batch creation
+
 ## [0.1.5]
 
 ### Fixed
