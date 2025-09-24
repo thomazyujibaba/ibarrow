@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.9]
+
+### Added
+- **Comprehensive Debug Logging**: Added detailed debug logging to identify exactly where InvalidFooter errors occur
+- **Error Tracing**: Enhanced error messages with specific context about which operation failed
+- **Stream Validation**: Added logging for Arrow stream creation, batch writing, and finalization steps
+
+### Debug Features
+- Log cursor None cases and empty stream creation
+- Track batch count and stream byte sizes
+- Monitor Polars/Pandas DataFrame conversion steps
+- Detailed error messages for StreamWriter operations
+- PyArrow IPC stream reading error tracking
+
+### Technical Details
+- Added `eprintln!` debug statements throughout `query_arrow_ipc_impl`
+- Enhanced error handling with `.map_err()` for precise error location
+- Logging covers: schema creation, batch writing, stream finalization, and Python conversions
+- This version helps identify the exact source of InvalidFooter errors for targeted fixes
+
 ## [0.1.8]
 
 ### Fixed

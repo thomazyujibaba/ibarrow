@@ -106,9 +106,11 @@ impl IbarrowConnection {
     }
 
     fn query_arrow_ipc(&self, sql: &str) -> PyResult<Py<PyAny>> {
+        eprintln!("DEBUG: query_arrow_ipc called with SQL: {}", sql);
         let bytes = query_arrow_ipc_impl(&self.dsn, &self.user, &self.password, sql, &self.config)
             .map_err(|e| {
                 let msg = e.to_string();
+                eprintln!("ERROR: query_arrow_ipc_impl failed: {}", msg);
                 if msg.contains("IM002") || msg.contains("connection") {
                     PyConnectionError::new_err(format!("Connection Error: {}", msg))
                 } else if msg.contains("SQL") || msg.contains("syntax") {
@@ -237,16 +239,30 @@ fn query_arrow_ipc_impl(
         Some(cursor) => cursor,
         None => {
             // Query executed successfully but returned no result set
-            // Return a valid empty Arrow stream with a simple schema
+            // Return a valid empty Arrow stream with empty schema
+            eprintln!("DEBUG: Creating empty Arrow stream for cursor None");
             let mut bytes = Vec::<u8>::new();
-            use arrow::datatypes::{DataType, Field, Schema};
-            let schema = Schema::new(vec![Field::new("empty", DataType::Int32, true)]);
+            use arrow::datatypes::Schema;
+            let schema = Schema::empty();
             let schema_ref = std::sync::Arc::new(schema);
 
-            let mut writer = StreamWriter::try_new(&mut bytes, &schema_ref)?;
+            let mut writer = StreamWriter::try_new(&mut bytes, &schema_ref).map_err(|e| {
+                anyhow!(
+                    "ERROR: Failed to create StreamWriter for empty schema: {}",
+                    e
+                )
+            })?;
             let empty_batch = arrow::record_batch::RecordBatch::new_empty(schema_ref);
-            writer.write(&empty_batch)?;
-            writer.finish()?;
+            writer
+                .write(&empty_batch)
+                .map_err(|e| anyhow!("ERROR: Failed to write empty batch: {}", e))?;
+            writer
+                .finish()
+                .map_err(|e| anyhow!("ERROR: Failed to finish empty stream writer: {}", e))?;
+            eprintln!(
+                "DEBUG: Successfully created empty Arrow stream ({} bytes)",
+                bytes.len()
+            );
             return Ok(bytes);
         }
     };
@@ -263,28 +279,50 @@ fn query_arrow_ipc_impl(
     let mut bytes = Vec::<u8>::new();
     {
         let schema = arrow_record_batches.schema();
+        eprintln!(
+            "DEBUG: Creating StreamWriter with schema: {} fields",
+            schema.fields().len()
+        );
 
         // Pipelining: write each batch immediately as it's fetched
         // This keeps memory usage constant instead of accumulating all data
-        let mut writer = StreamWriter::try_new(&mut bytes, &schema)?;
+        let mut writer = StreamWriter::try_new(&mut bytes, &schema)
+            .map_err(|e| anyhow!("ERROR: Failed to create StreamWriter: {}", e))?;
 
-        let mut has_data = false;
+        let mut wrote = false;
+        let mut batch_count = 0;
         for batch in arrow_record_batches {
-            writer.write(&batch?)?;
-            has_data = true;
+            let batch =
+                batch.map_err(|e| anyhow!("ERROR: Failed to read batch {}: {}", batch_count, e))?;
+            writer
+                .write(&batch)
+                .map_err(|e| anyhow!("ERROR: Failed to write batch {}: {}", batch_count, e))?;
+            wrote = true;
+            batch_count += 1;
             // Each batch is written immediately, freeing memory
             // Memory usage stays constant regardless of dataset size
         }
 
         // If no data was written, write an empty batch to ensure valid stream
-        if !has_data {
+        if !wrote {
+            eprintln!("DEBUG: No data batches, writing empty batch");
             use arrow::record_batch::RecordBatch;
             let empty_batch = RecordBatch::new_empty(schema.clone());
-            writer.write(&empty_batch)?;
+            writer
+                .write(&empty_batch)
+                .map_err(|e| anyhow!("ERROR: Failed to write empty batch: {}", e))?;
+        } else {
+            eprintln!("DEBUG: Wrote {} data batches", batch_count);
         }
 
-        // Always finish the writer to ensure proper footer
-        writer.finish()?;
+        // Always finish the writer to ensure proper footer - guaranteed execution
+        writer
+            .finish()
+            .map_err(|e| anyhow!("ERROR: Failed to finish StreamWriter: {}", e))?;
+        eprintln!(
+            "DEBUG: Successfully finished Arrow stream ({} bytes)",
+            bytes.len()
+        );
     }
 
     Ok(bytes)
@@ -299,8 +337,13 @@ fn query_polars_impl(
     config: &QueryConfig,
 ) -> PyResult<Py<PyAny>> {
     // High-level wrapper: use Arrow IPC for maximum compatibility with Polars
+    eprintln!("DEBUG: query_polars_impl called");
     let bytes = query_arrow_ipc_impl(dsn, user, password, sql, config).map_err(|e| {
         let msg = e.to_string();
+        eprintln!(
+            "ERROR: query_polars_impl - query_arrow_ipc_impl failed: {}",
+            msg
+        );
         if msg.contains("IM002") || msg.contains("connection") {
             PyConnectionError::new_err(format!("Connection Error: {}", msg))
         } else if msg.contains("SQL") || msg.contains("syntax") {
@@ -314,6 +357,10 @@ fn query_polars_impl(
 
     // Return Polars DataFrame directly from Arrow IPC bytes
     Python::with_gil(|py| {
+        eprintln!(
+            "DEBUG: Converting {} bytes to Polars DataFrame",
+            bytes.len()
+        );
         let polars = py.import_bound("polars")?;
         let io = py.import_bound("io")?;
 
@@ -322,7 +369,12 @@ fn query_polars_impl(
         let buf = io.getattr("BytesIO")?.call1((py_bytes,))?;
 
         // Use polars.read_ipc with proper error handling
-        let df = polars.getattr("read_ipc")?.call1((buf,))?;
+        eprintln!("DEBUG: Calling polars.read_ipc");
+        let df = polars.getattr("read_ipc")?.call1((buf,)).map_err(|e| {
+            eprintln!("ERROR: polars.read_ipc failed: {}", e);
+            e
+        })?;
+        eprintln!("DEBUG: Successfully created Polars DataFrame");
         Ok(df.into())
     })
 }
@@ -336,8 +388,13 @@ fn query_pandas_impl(
     config: &QueryConfig,
 ) -> PyResult<Py<PyAny>> {
     // High-level wrapper: use Arrow IPC for maximum compatibility with Pandas
+    eprintln!("DEBUG: query_pandas_impl called");
     let bytes = query_arrow_ipc_impl(dsn, user, password, sql, config).map_err(|e| {
         let msg = e.to_string();
+        eprintln!(
+            "ERROR: query_pandas_impl - query_arrow_ipc_impl failed: {}",
+            msg
+        );
         if msg.contains("IM002") || msg.contains("connection") {
             PyConnectionError::new_err(format!("Connection Error: {}", msg))
         } else if msg.contains("SQL") || msg.contains("syntax") {
@@ -349,18 +406,31 @@ fn query_pandas_impl(
         }
     })?;
     Python::with_gil(|py| {
+        eprintln!(
+            "DEBUG: Converting {} bytes to Pandas DataFrame via PyArrow",
+            bytes.len()
+        );
         let pyarrow = py.import_bound("pyarrow")?;
         let io = py.import_bound("io")?;
 
         let py_bytes = PyBytes::new_bound(py, &bytes);
         let buf = io.getattr("BytesIO")?.call1((py_bytes,))?;
+
+        eprintln!("DEBUG: Opening PyArrow IPC stream");
         let table = pyarrow
             .getattr("ipc")?
             .getattr("open_stream")?
             .call1((buf,))?
             .getattr("read_all")?
-            .call0()?;
+            .call0()
+            .map_err(|e| {
+                eprintln!("ERROR: PyArrow IPC read_all failed: {}", e);
+                e
+            })?;
+
+        eprintln!("DEBUG: Converting PyArrow table to Pandas");
         let df = table.getattr("to_pandas")?.call0()?;
+        eprintln!("DEBUG: Successfully created Pandas DataFrame");
         Ok(df.into())
     })
 }
